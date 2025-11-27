@@ -35,7 +35,7 @@ class SubCategory(models.Model):
         return self.sub_category_name
 
 class Product(models.Model):
-    subcategory = models.ForeignKey(SubCategory, on_delete=models.CASCADE)
+    subcategory = models.ForeignKey(SubCategory, on_delete=models.CASCADE, related_name='products')
     product_name = models.CharField(max_length=50, verbose_name="Название")
     price = models.PositiveIntegerField()
     article_number = models.PositiveIntegerField(unique=True)
@@ -75,8 +75,18 @@ class ReView(models.Model):
 
 class Cart(models.Model):
     user = models.OneToOneField(UserProfile, on_delete=models.CASCADE)
+    def __str__(self):
+        return f'{self.user}'
 
+    def get_total_price(self):
+        return sum([i.get_total_price() for i in self.items.all()])
 class CartItem(models.Model):
-    cart = models.ForeignKey(Cart, on_delete=models.CASCADE)
+    cart = models.ForeignKey(Cart, on_delete=models.CASCADE, related_name='items')
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
     quantity = models.PositiveIntegerField(default=1)
+
+    def __str__(self):
+        return f'{self.product}, {self.quantity}'
+
+    def get_total_price(self):
+        return self.quantity * self.product.price

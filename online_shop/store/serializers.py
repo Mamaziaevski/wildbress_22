@@ -1,6 +1,45 @@
 from .models import *
 from rest_framework import serializers
 
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.contrib.auth import authenticate
+
+
+class UserRegisterSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserProfile
+        fields = ('first_name','username','password',
+                'phone_number')
+        extra_kwargs = {'password': {'write_only': True}}
+
+    def create(self, validated_data):
+        user = UserProfile.objects.create_user(**validated_data)
+        return user
+
+
+
+class UserLoginSerializer(serializers.Serializer):
+    username = serializers.CharField()
+    password = serializers.CharField(write_only=True)
+
+    def validate(self, data):
+        user = authenticate(**data)
+        if user and user.is_active:
+            return user
+        raise serializers.ValidationError("Неверные учетные данные")
+
+    def to_representation(self, instance):
+        refresh = RefreshToken.for_user(instance)
+        return {
+            'user': {
+                'username': instance.username,
+                'email': instance.email,
+            },
+            'access': str(refresh.access_token),
+            'refresh': str(refresh),
+        }
+
+
 class UserProfileSerializers(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
@@ -16,18 +55,17 @@ class CategoryListSerializers(serializers.ModelSerializer):
         model = Category
         fields = ['id', 'category_name', 'category_image']
 
-class SubCategorySerializers(serializers.ModelSerializer):
-    class Meta:
-        model = SubCategory
-        fields = ['sub_category_name']
-
 
 class CategoryDetailSerializers(serializers.ModelSerializer):
-    category_sub = SubCategorySerializers(many=True, read_only=True)
     class Meta:
         model = Category
-        fields = ['category_name', 'sub_category_name']
+        fields = ['id', 'category_name', 'category_image', 'category_sub']
 
+
+class SubCategoryListSerializers(serializers.ModelSerializer):
+    class Meta:
+        model = SubCategory
+        fields = ['id','sub_category_name']
 
 
 
@@ -56,6 +94,15 @@ class ProductListSerializers(serializers.ModelSerializer):
     def get_count_people(self, obj):
         return obj.get_count_people()
 
+
+class SubCategoryDetailSerializers(serializers.ModelSerializer):
+    products = ProductListSerializers(read_only=True, many=True)
+    class Meta:
+        model = SubCategory
+        fields = ['sub_category_name', 'products']
+
+
+
 class ReViewSerializers(serializers.ModelSerializer):
     created_date = serializers.DateTimeField(format='%d-%m-%Y')
     user = UserProfileReViewSerializers()
@@ -67,7 +114,7 @@ class ReViewSerializers(serializers.ModelSerializer):
 class ProductDetailSerializers(serializers.ModelSerializer):
     created_date = serializers.DateTimeField(format='%d-%m-%Y')
     product_images = ProductImageSerializers(read_only=True, many=True)
-    subcategory = SubCategorySerializers()
+    subcategory = SubCategoryDetailSerializers()
     product_reviews = ReViewSerializers(read_only=True, many=True)
     avg_rating = serializers.SerializerMethodField()
     get_count_people = serializers.SerializerMethodField()
@@ -84,12 +131,29 @@ class ProductDetailSerializers(serializers.ModelSerializer):
     def get_count_people(self, obj):
         return obj.get_count_people()
 
-class CartSerializers(serializers.ModelSerializer):
-    class Meta:
-        model = Cart
-        fields = '__all__'
+
 
 class CartItemSerializers(serializers.ModelSerializer):
+    product = ProductListSerializers(read_only=True)
+    product_id = serializers.PrimaryKeyRelatedField(queryset=Product.objects.all(),
+                                                    write_only=True,source='product')
+    total_price = serializers.SerializerMethodField()
+
+
     class Meta:
         model = CartItem
-        fields = '__all__'
+        fields = ['id', 'product', 'product_id', 'quantity', 'total_price']
+
+    def get_total_price(self, obj):
+        return obj.get_total_price()
+
+
+class CartSerializers(serializers.ModelSerializer):
+    items = CartItemSerializers(read_only=True, many=True)
+    total_price = serializers.SerializerMethodField()
+    class Meta:
+        model = Cart
+        fields = ['id', 'user', 'items', 'total_price']
+
+    def get_total_price(self, obj):
+        return obj.get_total_price()
